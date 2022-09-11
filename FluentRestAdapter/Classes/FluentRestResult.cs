@@ -43,6 +43,12 @@ public class FluentRestResult
 /// <typeparam name="TResult">The type of object to retrieve in response Json from backend it can be an array alse.</typeparam>
 public class FluentRestResult<TResult> : FluentRestResult
 {
+
+    /// <summary>
+    /// Sequential number, used with GetStream
+    /// </summary>
+    public int Seq { get; internal set; } = 0;
+    
     /// <summary>
     /// Value of object received
     /// </summary>
@@ -55,6 +61,17 @@ public class FluentRestResult<TResult> : FluentRestResult
         newResult.ErrorDescription = ErrorDescription;
         newResult.RequestTime = RequestTime;
         newResult.DeserializationTime = DeserializationTime;
+        return newResult;
+    }
+    
+    internal FluentRestResult<TResult> CloneToNext()
+    {
+        var newResult = new FluentRestResult<TResult>();
+        newResult.StatusCode = StatusCode;
+        newResult.ErrorDescription = ErrorDescription;
+        newResult.RequestTime = RequestTime;
+        newResult.DeserializationTime = DeserializationTime;
+        newResult.Seq = Seq + 1;
         return newResult;
     }
 }

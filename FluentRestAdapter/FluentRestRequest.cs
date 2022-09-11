@@ -242,7 +242,7 @@ public sealed class FluentRestRequest
             result.RequestTime = timer.Elapsed;
             result.StatusCode = (HttpStatusCode) e.StatusCode!;
             result.ErrorDescription = e.Message;
-            stream = null;
+            if (stream!=null) await stream.DisposeAsync();
             timer.Stop();
         }
 
@@ -254,20 +254,62 @@ public sealed class FluentRestRequest
 
 
         var serializer = new JsonSerializer();
-        using (var sr = new StreamReader(stream))
-        using (JsonReader reader = new JsonTextReader(sr))
+        int i = 0;
+        await using (stream)
         {
-            while (reader.Read())
-                if (reader.TokenType == JsonToken.StartObject)
+            using (var sr = new StreamReader(stream)) {
+                using (JsonReader reader = new JsonTextReader(sr))
                 {
-                    var o = serializer.Deserialize<TResult>(reader);
-                    if (o != null)
+                    bool errorInStream = false;
+                    Exception deserializingException=null;
+                    try
                     {
-                        result.DeserializationTime = timer.Elapsed;
-                        result.Value = o;
-                        yield return result;
+                        errorInStream = true;
+                        while (reader.Read())
+                            if (reader.TokenType == JsonToken.StartObject)
+                            {
+                                TResult? o=null;
+                                try
+                                {
+                                    o = serializer.Deserialize<TResult>(reader);
+                                }
+                                catch (Exception e)
+                                {
+                                    deserializingException = e;
+                                    break;
+                                }
+                                if (o != null)
+                                {
+                                    result = result.CloneToNext();
+                                    result.DeserializationTime = timer.Elapsed;
+                                    result.Value = o;
+                                    i++;
+                                    Console.WriteLine($"Received Object {result.Seq}, Time: {result.DeserializationTime.TotalMilliseconds} msec");
+                                    yield return result;
+                                }
+                            }
+
+                        errorInStream = false;
+                    }
+                    finally
+                    {
+                        if (errorInStream)
+                        {
+                            result = result.CloneToNext();
+                            result.RequestTime = timer.Elapsed;
+                            result.StatusCode = 0;
+                            if (deserializingException != null)
+                            {
+                                result.ErrorDescription = deserializingException.Message;
+                            }
+                            else
+                            {
+                                result.ErrorDescription = "Error Receiving data";
+                            }
+                        }
                     }
                 }
+            }
         }
 
         timer.Stop();
